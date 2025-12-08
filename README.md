@@ -1,70 +1,41 @@
-# SystemVerilog Verification Project: Timer Peripheral IP
 
-## 📌 Overview
-This project involves the design and implementation of a comprehensive **SystemVerilog (SV)** verification environment for a **Timer Peripheral IP**. The project demonstrates a **Layered Testbench Architecture** built from scratch using **Object-Oriented Programming (OOP)** principles, mimicking UVM methodologies without using the library itself.
+## Project Overview
+This project validates a 32-bit Timer Slave Peripheral designed for SoC integration. The DUT communicates via a custom **REQ/GNT handshake protocol** and supports programmable countdowns, auto-reload modes, and interrupt generation.
 
-The environment validates a slave peripheral that communicates via a **REQ/GNT handshake protocol**, featuring programmable countdowns, auto-reload capabilities, and status monitoring.
+The verification environment was architected from scratch using a layered class-based approach (Driver, Monitor, Scoreboard) to ensure modularity and reusability.
 
-## 🛠️ Verification Environment Architecture
-The testbench is structured using a modular, OOP-based approach to ensure reusability and scalability:
+## Verification Features
+*   **Methodology:** Constrained Random Verification (CRV) & Coverage Driven Verification (CDV).
+*   **Architecture:** Generator $\rightarrow$ Driver $\rightarrow$ Virtual Interface $\rightarrow$ Monitor $\rightarrow$ Scoreboard.
+*   **Checking:** Self-checking Scoreboard with a Golden Reference Model and Protocol Assertions.
 
-*   **Transaction Layer:** Polymorphic transaction classes (`bus_trans`, `read_trans`, `write_trans`) with constraints for **Randomization**.
-*   **Driver:** Drives signals to the DUT via a `virtual interface`, handling the request-grant handshake timing.
-*   **Monitor:** Passively observes bus activity, captures transactions, and broadcasts them to the scoreboard via mailboxes.
-*   **Scoreboard:** Implements a **Golden Reference Model** to predict expected DUT behavior and compares it against actual monitor results.
-*   **Coverage Collector:** Tracks functional coverage metrics using `covergroups`, bins, and cross-coverage.
-*   **Interface:** Defines signal direction (Modports) and timing (Clocking Blocks).
+## Test Scenarios & Edge Cases
+Defined in `testbench_top.sv`, the verification plan specifically targeted the following scenarios:
 
-## 🧪 Key Features Verified
-The verification plan focused on validating the design specification [Source: Design Spec]:
-1.  **Bus Protocol:** Validating the proprietary Request/Grant handshake (Slave must assert GNT within ≤3 cycles).
-2.  **Register Map:** Correct read/write access to `CONTROL` (0x00), `LOAD` (0x04), and `STATUS` (0x08) registers.
-3.  **Core Logic:**
-    *   Countdown timing accuracy.
-    *   **Auto-Reload** vs. **One-Shot** modes.
-    *   **Zero Handling** (LOAD=0 treated as 1).
-    *   **Sticky Status Flags** (EXPIRED bit must be manually cleared).
+### 1. Directed & Corner Case Tests
+*   **Load Zero Handling:** Verified the specific edge case where writing `0` to the `LOAD` register must be internally coerced to `1` (preventing infinite loops).
+*   **Saturation/Max Load:** Validated timer behavior with the maximum 16-bit value (`0xFFFF`) to check for overflow or timing glitches.
+*   **Sticky Bit Clearance:** Verified that the `EXPIRED` interrupt flag remains set until explicitly cleared via "Write-1-to-Clear" or "Read-to-Clear" mechanisms.
 
-## 🔍 Verification Strategy
-The project utilizes **Constrained Random Verification (CRV)** and **Coverage Driven Verification (CDV)**.
+### 2. Operational Mode Tests
+*   **Auto-Reload Verification:** Validated that the timer automatically re-arms itself without software intervention when `RELOAD_EN` is set.
+*   **Stress Testing:** Randomized traffic injection with variable delays to stress the bus handshake protocol.
 
-### 1. Functional Coverage
-Implemented in `coverage_collector_timer.sv`:
-*   **Address Coverage:** Ensuring all registers are accessed.
-*   **Data Bins:** Corner cases (0, 1), Low values, and Max ranges.
-*   **Cross Coverage:** Validating interactions, such as `LOAD` value × `Zero` handling and `Start` × `Reload` modes.
+### 3. Protocol Compliance (SVA)
+Implemented in `timer_sva.sv` to validate signal timing:
+*   `R1_GNT_ASSERT_3_CYCLES`: Ensures Slave asserts `GNT` within $\le 3$ cycles of `REQ`.
+*   `R2_REQ_WAIT_2_GNT`: Checks that Master holds `REQ` stable until `GNT` is received.
 
-### 2. Assertions (SVA)
-Implemented in `timer_sva.sv`:
-*   `R1_GNT_ASSERT_3_CYCLES`: Checks that GNT is asserted within 1-3 cycles after REQ.
-*   `R2_REQ_WAIT_2_GNT`: Ensures REQ remains stable until GNT is received.
-*   `reset_clears_gnt_p`: Verifies asynchronous reset behavior.
+## Functional Coverage
+Coverage model (`coverage_collector_timer.sv`) ensures 100% verification of:
+*   **Register Access:** All registers (CONTROL, LOAD, STATUS) read/written.
+*   **Data Bins:** Corner values (0, 1), Low range, and High range.
+*   **Cross Coverage:**
+    *   `cross_load_zero`: Interaction between Address `LOAD` and Data `0`.
+    *   `cross_modes`: Interaction between `Start` bit and `Reload_En` bit.
 
-### 3. Test Scenarios
-Defined in `testbench_top.sv`:
-*   **Smoke Test:** Basic sanity checks.
-*   **Load Zero Test:** Verifying the specific edge case where 0 input is converted to 1.
-*   **Auto-Reload Test:** Verifying continuous counting cycles.
-*   **Stress Test:** Randomized traffic with maximum load values.
-
-## 🐛 Bugs Detected
-The verification environment successfully identified several injected bugs in the RTL design (`timer_periph.sv`):
-1.  **Protocol Violation:** The DUT occasionally took 4 cycles to assert GNT (Spec requires ≤3).
-2.  **Logic Error:** Mis-decoded `RELOAD_EN` bit (mapped to `CLR_STATUS` bit instead).
-3.  **Edge Case Failure:** Loading `0` was not coerced to `1` as required by the spec.
-
-## 📂 File Structure
-```text
-├── rtl/
-│   ├── timer_periph.sv        # Design Under Test (Buggy version)
-│   └── design_params_pkg.sv   # Design parameters
-├── verif/
-│   ├── bus_if.sv              # Interface with Clocking Blocks & Modports
-│   ├── bus_trans.sv           # Transaction Classes
-│   ├── Driver.sv              # Bus Driver
-│   ├── Monitor.sv             # Bus Monitor
-│   ├── Scoreboard.sv          # Reference Model & Checker
-│   ├── coverage_collector.sv  # Functional Coverage
-│   ├── timer_sva.sv           # SystemVerilog Assertions
-│   └── testbench_top.sv       # Top-Level TB & Test Cases
-└── README.md
+## Bugs Detected
+The environment successfully identified RTL logic errors injected into the design:
+1.  **Protocol Violation:** For specific addresses (aligned to 8), the DUT asserted `GNT` after 4 cycles (Spec violation: limit is 3).
+2.  **Logic Error:** The `RELOAD_EN` configuration bit was incorrectly mapped to the `CLR_STATUS` bit in the control logic.
+3.  **Edge Case Failure:** Loading `0` was not coerced to `1`, causing the timer to stall or behave unpredictably.

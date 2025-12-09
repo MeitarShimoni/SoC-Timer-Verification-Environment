@@ -2,7 +2,7 @@
 ## Project Overview
 This project validates a 32-bit Timer Slave Peripheral designed for SoC integration. The DUT communicates via a custom **REQ/GNT handshake protocol** and supports programmable countdowns, auto-reload modes, and interrupt generation.
 
-![Verification Environment](design/image.png)
+![Verification Environment](design/verification_environment.png)
 
 
 The verification environment was architected from scratch using a layered class-based approach (Driver, Monitor, Scoreboard) to ensure modularity and reusability.
@@ -30,6 +30,8 @@ Implemented in `timer_sva.sv` to validate signal timing:
 *   `R2_REQ_WAIT_2_GNT`: Checks that Master holds `REQ` stable until `GNT` is received.
 
 ## Functional Coverage
+![Functional Coverage](design/coverage.png)
+
 Coverage model (`coverage_collector_timer.sv`) ensures 100% verification of:
 *   **Register Access:** All registers (CONTROL, LOAD, STATUS) read/written.
 *   **Data Bins:** Corner values (0, 1), Low range, and High range.

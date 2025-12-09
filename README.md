@@ -1,6 +1,8 @@
 
 ## Project Overview
 This project validates a 32-bit Timer Slave Peripheral designed for SoC integration. The DUT communicates via a custom **REQ/GNT handshake protocol** and supports programmable countdowns, auto-reload modes, and interrupt generation.
+![Verification Environment](design/images/image.png)
+
 
 The verification environment was architected from scratch using a layered class-based approach (Driver, Monitor, Scoreboard) to ensure modularity and reusability.
 

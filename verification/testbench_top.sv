@@ -1,6 +1,6 @@
 // --------------------------------------------------
 // MODULE: TOP LEVEL TESTBENCH
-//
+// AUTHOR: MEITAR SHIMONI
 // Description:
 // This is the top level testbench that instantiates the DUT and the verification components
 // like Driver, Monitor, Scoreboard and Sequencer.
@@ -19,6 +19,9 @@ module testbench_top;
     logic clk = 0;
     always #5 clk = ~clk;
 
+    //
+    // int active_transaction = 0;
+    //
     // instanciating the bus interface
     bus_if bus_if(.clk(clk));
 
@@ -88,33 +91,40 @@ module testbench_top;
         
         
         // ------------------------------- TESTS ----------------------------------
-        $display("");
-        $display("------------------ TEST 1 :  The Smoke Gun -----------------");
 
-        // single_test(10);
+        $display("\n------------------ TEST 1 :  The Smoke Gun ------------------\n");
 
-        // sending 2 times random load and start
-        single_test(.numtimes(2));
+        single_test(.numtimes(2)); // sending 2 times random load and start
+        wait(scb.is_empty()); 
 
-        $display("");
-        $display("------------------ TEST 2 :  Load Zero -----------------");
-        // load zero and start the timer
-        single_test(.numtimes(1), .load_value(0));
-
-        $display("");
-        $display("------------------ TEST 3 :  Auto- Reload -----------------");
-
-        auto_reload_test(.load_value(3), .cycles(4));
-
-        // TEST 4: Random Traffic
+        $display("\n------------------ TEST 2 :  Load Zero ------------------\n");
         
+        single_test(.numtimes(1), .load_value(0)); // load zero and start the timer
+        wait(scb.is_empty()); 
 
-        // TEST 5: Edge Cases
-        // load max value and start the timer
-        single_test(.numtimes(1), .load_value(65535));
 
+        $display("\n------------------ TEST 3 :  Auto- Reload ------------------\n");
+
+        auto_reload_test(.load_value(3), .cycles(4)); // load 3 and auto-reload 4 times
+        wait(scb.is_empty()); 
+
+        $display("\n------------------ TEST 4 : count up to max value 65,535 ------------------\n");
         
-        $display("");
+        
+        single_test(.numtimes(1), .load_value(65535)); // load max value and start the timer
+        wait(scb.is_empty());
+
+        $display("\n------------------ TEST 5 :  CLR STATUS ------------------\n");
+        #500;
+        clear_status_test();
+        wait(scb.is_empty());
+
+
+        // $display("\n------------------ TEST 5 :  UNMAPPED ADDRESSES ------------------\n");
+
+        // read_unmapped_addr();
+        // wait(scb.is_empty());
+
         // ------------------------------------ ----------------------------------
 
         fork
@@ -130,8 +140,6 @@ module testbench_top;
                 $error("TIMEOUT: Scoreboard never emptied!");
             end
         join_any // Finishes when the FIRST of the two threads finishes
-
-
 
         #400;
         
@@ -187,7 +195,6 @@ module testbench_top;
         bus_trans tr;
 
         automatic read_trans rt = new();
-        // rt.kind = READ;
         rt.addr = P_ADDR_STATUS;
         tr = rt;
         drv_mbx.put(tr);
@@ -195,12 +202,11 @@ module testbench_top;
 
     endtask
 
-    task read_addr(input [P_ADDR_WIDTH-1:0] address);
+    task read_addr(input [P_ADDR_WIDTH-1:0] address = P_ADDR_STATUS);
         bus_trans tr;
 
         automatic read_trans rt = new();
-        // rt.kind = READ;
-        rt.addr = P_ADDR_STATUS;
+        rt.addr = address;
         tr = rt;
         drv_mbx.put(tr);
         exp_mbx.put(tr);
@@ -226,19 +232,13 @@ module testbench_top;
     task random_traffic(int num_trans);
         bus_trans tr;
         repeat(num_trans) begin
-            // wt = new();
             automatic write_trans wt = new();
             if(!wt.randomize()) $error("FAILD TO RANDOMIZE!");
             tr = wt;
             drv_mbx.put(tr);
             exp_mbx.put(tr);
         end
-
     endtask
-
-
-
-
 
     // modify later
     task reset_all;
@@ -249,17 +249,12 @@ module testbench_top;
         $display("reset released!");
     endtask
 
-    
-
-
-
+    // ------------------ Task for a single modular test ---------------
     task single_test(input int numtimes = 1, input int load_value = -1);     
         logic [P_DATA_WIDTH-1:0] current_load;
 
         repeat(numtimes) begin
-            
-            
-        
+            wait(scb.is_empty());
             if (load_value == -1) begin
                 current_load = $urandom_range(0, 25);
                 $display("Running test with RANDOM value: %0d", current_load);
@@ -283,7 +278,48 @@ module testbench_top;
 
     endtask
 
+    task read_unmapped_addr();
+            
+        read_addr(.address('h01)); // another unmapped address
+        read_addr(.address('h02)); // another unmapped address
+        read_addr(.address('h03)); // another unmapped address
+        read_addr(.address('h05)); // another unmapped address
+        read_addr(.address('h07)); // another unmapped address
+        read_addr(.address('hFF)); // another unmapped address
 
+    endtask : read_unmapped_addr
+
+    // // ---------------- manual cleating test ----------------
+    task manual_clear_test();
+
+        load_timer('hCE);
+        start_timer();
+        repeat(('h20 + 10)/2) @(posedge clk);
+        manual_clear();
+        repeat(('h20 + 10)/2) @(posedge clk);
+        read_timer();
+        @(posedge clk); 
+        read_timer();
+
+    endtask
+
+
+    task clear_status_test();
+
+        load_timer('h16);
+        start_timer();
+        repeat('h16 + 20) @(posedge clk);
+        
+        manual_clear();
+        @(posedge clk);
+
+        repeat(('h16 + 10)/2) @(posedge clk);
+        read_timer();
+        @(posedge clk); 
+        read_timer();
+    endtask : clear_status_test
+
+    // ---------------- Auto - Reloading test ----------------
     task auto_reload_test(input int load_value = 5, input int cycles = 3);
 
         bus_trans tr;
@@ -316,5 +352,8 @@ module testbench_top;
 
         manual_clear(); 
     endtask
+
+
+    // task test_unmapped_addr;
 
 endmodule
